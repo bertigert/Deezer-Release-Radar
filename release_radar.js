@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Deezer Release Radar
 // @namespace    Violentmonkey Scripts
-// @version      1.2.3
+// @version      1.2.3-dev
 // @author       Bababoiiiii
 // @description  Adds a new button on the deezer page allowing you to see new releases of artists you follow.
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=deezer.com
@@ -10,9 +10,17 @@
 
 // TODO:
 // add to x playlist if from y artist
+// config import/export
+// cloud config syncing
+// better debug logging
 
 "use strict";
 
+const DEBUG_MODE = true;
+
+function debug(...args) {
+    if (DEBUG_MODE) console.debug("[Deezer Release Radar]", ...args);
+}
 function log(...args) {
     console.log("[Deezer Release Radar]", ...args);
 }
@@ -152,8 +160,14 @@ async function get_releases(auth_token, artist_id, cursor=null) {
         }),
         "method": "POST",
     });
+    if (!r.ok) {
+        return;
+    }
     const resp = await r.json();
-    return [resp.data.artist.albums.edges, resp.data.artist.albums.pageInfo.hasNextPage, resp.data.artist.albums.pageInfo.endCursor];
+    if (!resp.errors) {
+        return [resp.data.artist.albums.edges, resp.data.artist.albums.pageInfo.hasNextPage, resp.data.artist.albums.pageInfo.endCursor];
+    }
+    error("Error on getting releases for artist", artist_id, resp);
 }
 
 async function get_new_releases(auth_token, api_token, artist_ids) {
@@ -165,6 +179,7 @@ async function get_new_releases(auth_token, api_token, artist_ids) {
 
     async function process_artist_batch(batch_artist_ids) {
         const batch_promises = batch_artist_ids.map(async (artist_id) => {
+            debug("Handling artist", artist_id);
             if (config.filters.contributor_id.includes(artist_id)) {
                 log("Completely skipping artist", artist_id);
                 return;
@@ -176,7 +191,13 @@ async function get_new_releases(auth_token, api_token, artist_ids) {
                 if (cursor) {
                     log("Next request for the same artist (bad)", artist_id);
                 }
-                [releases, next_page, cursor] = await get_releases(auth_token, artist_id, cursor);
+                debug("Getting releases for artist", artist_id);
+
+                const result = await get_releases(auth_token, artist_id, cursor);
+                if (!result) {
+                    continue;
+                }
+                [releases, next_page, cursor] = result;
 
                 for (let release of releases) {
                     release.node.releaseDate = new Date(release.node.releaseDate).getTime();
@@ -194,13 +215,15 @@ async function get_new_releases(auth_token, api_token, artist_ids) {
                     };
 
                     // stop requesting songs if the song is older than the age limit...
-                    if (current_time - release.node.releaseDate > 1000 * 60 * 60 * 24 * config.max_song_age) {
+                    if (current_time - new_release.release_date > 1000 * 60 * 60 * 24 * config.max_song_age) {
+                        debug("Release was too old", new_release.id);
                         next_page = null;
                         break;
                     }
 
                     // configurable filters
                     if (is_release_filtered(new_release)) {
+                        debug("Release was filtered by user config", new_release.id);
                         continue;
                     }
 
@@ -210,17 +233,20 @@ async function get_new_releases(auth_token, api_token, artist_ids) {
                     // the next step to this optimisation would be to get the oldest song in the list which is within the amount limit and remove older songs
                     // we would need to keep track of every song age and constantly update a list (?) and stuff, idk how exactly
                     // the smaller the time the older the song
-                    if (current_oldest_song_which_got_added_time > release.node.releaseDate) {
+                    if (current_oldest_song_which_got_added_time > new_release.release_date) {
+                        debug("Release is older than the current oldest song", new_release.id);
                         if (new_releases.length >= config.max_song_count) {
+                            debug("Release was filtered because its older than the oldest song and song limit is reached", new_release.id)
                             next_page = null;
                             break;
                         }
-                        current_oldest_song_which_got_added_time = release.node.releaseDate;
+                        current_oldest_song_which_got_added_time = new_release.release_date;
                     }
 
-
+                    debug("Adding release", new_release.id);
                     new_releases.push(new_release);
 
+                    debug("Getting songs in album", new_release.id);
                     const amount_of_songs_in_album_promise = (async () => {
                         const amount_songs = await get_amount_of_songs_of_album(api_token, new_release.id);
                         new_release.amount_songs = amount_songs;
@@ -241,12 +267,12 @@ async function get_new_releases(auth_token, api_token, artist_ids) {
     }
 
     await Promise.all(amount_of_songs_in_each_album_promises);
-
+    debug("Got all releases, sorting");
     new_releases.sort((a, b) => b.release_date - a.release_date); // sort newest songs first
     return new_releases.slice(0, config.max_song_count);
 }
 
-async function get_all_songs_from_album(album_id, api_token) {
+async function get_all_songs_from_albumw(album_id, api_token) {
         const r = await fetch("https://www.deezer.com/ajax/gw-light.php?method=song.getListByAlbum&input=3&api_version=1.0&api_token="+api_token, {
             "body": JSON.stringify({
                 "alb_id": album_id,
@@ -316,6 +342,7 @@ async function add_new_releases_to_playlist(playlist_id, new_releases, api_token
         log("No new songs");
         return;
     }
+    debug("Getting songs in playlist", playlist_id);
     let songs_in_playlist = await get_songs_in_playlist(playlist_id, api_token)
     if (!songs_in_playlist) {
         log("Aborting the adding of new releases to playlist");
@@ -326,6 +353,7 @@ async function add_new_releases_to_playlist(playlist_id, new_releases, api_token
     const songs = {};
     async function process_batch(batch) {
         const promises = batch.map(async (new_release) => {
+            debug("Getting all songs from album for playlist", new_release.id);
             const songs_from_album = await get_all_songs_from_album(new_release.id, api_token);
             for (let song_from_album of songs_from_album) {
                 if (song_from_album.ARTISTS.every( (artist) => artist.ART_ID !== new_release.from_artist) || // if it doesnt feature artist
@@ -356,6 +384,7 @@ async function add_new_releases_to_playlist(playlist_id, new_releases, api_token
         return;
     }
 
+    log("Adding songs to playlust", playlist_id);
     let resp = await add_songs_to_playlist(playlist_id, sorted_songs, api_token);
     if (resp.error.length > 0 || resp.error.REQUEST_ERROR) {
         error("Failed to add songs to playlist", playlist_id, resp.error);
@@ -378,9 +407,8 @@ function is_release_filtered(release, current_time=Date.now()) {
             config.filters.release_name.some(regex_str => (new RegExp(regex_str, "i")).test(release.name)) // filter releases by their name using regex
 }
 function is_song_filtered(song) {
-    return config.filters.song_name.some(regex_str => (new RegExp(regex_str, "i")).test(`${song.SNG_TITLE} ${song.VERSION}`.trim()));
+    return config.filters.song_name.some(regex_str => (new RegExp(regex_str, "i")).test(`${song.SNG_TITLE} ${song.VERSION}`.trim())); // filter songs by their name for the playlist
 }
-
 
 function ajax_load(path) {
     const home_button = document.querySelector("#dzr-app > div > div > div > div > a")
@@ -766,6 +794,7 @@ function set_css() {
     scrollbar-width: thin;
     line-height: 20px;
     resize: none;
+    font-family: monospace;
 }
 .release_radar_main_div_header_div > div > label > textarea::-webkit-scrollbar {
     height: 10px;
@@ -782,8 +811,9 @@ function set_css() {
 }
 
 .release_radar_main_div_header_div > div > label > input[type='checkbox'] {
-    height: 20px;
-    width: 20px;
+    height: 25px;
+    width: 25px;
+    accent-color: var(--tempo-colors-border-neutral-primary-focused);
 }
 
 .release_radar_upcoming_releases_details {
@@ -819,6 +849,7 @@ function set_css() {
     position: relative;
 }
 .release_radar_img_container_div > img {
+    border: 2px solid transparent;
     border-radius: var(--tempo-radii-xs);
     cursor: pointer;
 }
@@ -928,7 +959,7 @@ function set_css() {
     border-radius: 2px;
 }
 .release_radar_release_li.is_favorite .release_radar_img_container_div > img {
-    border: 1px solid var(--tempo-colors-text-accent-primary-default);
+    border-color: var(--tempo-colors-text-accent-primary-default);
     cursor: pointer;
 }
 
@@ -1006,7 +1037,7 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
         const play_button_svg = play_button.querySelector("svg");
 
         const play_release = async () => {
-            log("Playing Release");
+            debug("Playing Release");
             // tell the old hook to remove itself
             dzPlayer._play("removehooks");
             await dzPlayer.play({
@@ -1027,7 +1058,7 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
                 first_click = false;
 
                 await play_release();
-                log("Hooking control functions");
+                debug("Hooking control functions");
 
                 dzPlayer._play = (e, t) => {
                     const remove_hooks = e === "removehooks";
@@ -1037,14 +1068,14 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
 
                     // if unrelated song is playing
                     if (remove_hooks || context.TYPE !== "menu_panel_release_radar_album" || context.ID !== release.id) {
-                        log("Removing all player hooks");
+                        debug("Removing all player hooks");
                         first_click = true;
                         play_button_svg.innerHTML = play_icon;
                         play_button.classList.remove("is_playing");
                         dzPlayer._play = orig_functions._play;
                         dzPlayer.control.pause = orig_functions._pause;
                         dzPlayer.control.play = orig_functions._continue;
-                        log("Removed all player hooks");
+                        debug("Removed all player hooks");
                         if (remove_hooks) return;
                     } else {
                         play_button_svg.innerHTML = pause_icon;
@@ -1087,6 +1118,7 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
         const song_title_a = document.createElement("a");
         song_title_a.href = `${(config.open_in_app ? "deezer" : "https")}://www.deezer.com/${language}/album/${release.id}`;
         song_title_a.textContent = release.name;
+        song_title_a.title = release.name;
 
         song_title_a.onclick = (e) => {
             if (song_title_a.href.startsWith("deezer")) {
@@ -1098,7 +1130,7 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
 
         if (release.is_feature) {
             release_li.classList.add("is_feature");
-            song_title_a.title = "The artist is featured in at least one of the songs of this release."
+            song_title_a.title += ". The artist is featured in at least one of the songs of this release."
         }
         if (release.is_favorite) {
             release_li.classList.add("is_favorite");
@@ -1115,6 +1147,7 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
         bottom_info_div.textContent = `${(new Date(release.release_date)).toLocaleDateString()} (${time_ago(release.release_date)}) - ${correct_spelling(singularize(release.type.toLowerCase()))} - ${release.amount_songs} ${pluralize("Song", release.amount_songs)}` ;
 
         if (!cache.has_seen[release.id]) {
+            debug("Release was not seen before", release.id);
             amount_new_songs++;
             amount_songs_span.textContent = amount_new_songs;
             main_btn.classList.add("has_new")
@@ -1170,7 +1203,7 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
         if (upcoming_releases.length > 0) {
             upcoming_releases_lis = upcoming_releases.map(r => create_release_li(r))
 
-            if (config.types.upcoming_releases === 1) { // seperated
+            if (config.types.upcoming_releases === 1) { // Separated
                 const upcoming_releases_details = document.createElement("details");
                 upcoming_releases_details.className = "release_radar_upcoming_releases_details";
                 const upcoming_releases_details_summary = document.createElement("summary");
@@ -1185,6 +1218,7 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
     if (amount_new_songs <= 0) {
         amount_songs_span.remove();
     }
+
     return [...upcoming_releases_lis, ...past_releases_lis];
 }
 
@@ -1213,9 +1247,12 @@ class Setting {
         return this.setting_label;
     }
 
-    number_setting(modify_value_callback=null, additional_callback=null) {
+    number_setting(modify_value_callback=null, additional_callback=null, range=[null, null, null]) {
         const setting_input = document.createElement("input");
         setting_input.type = "number";
+        setting_input.min = range[0];
+        setting_input.max = range[1];
+        setting_input.step = range[2];
         setting_input.value = this.config_key_parent[this.config_key];
         setting_input.onchange = () => {
             this.config_key_parent[this.config_key] = modify_value_callback ? modify_value_callback(setting_input.value) : parseInt(setting_input.value);
@@ -1412,7 +1449,7 @@ function create_main_div(wait_for_new_releases_promise) {
                 "How to handle upcoming releases. Only applies after a page reload.",
                 config.types, "upcoming_releases",
                 "span 2"
-            )).dropdown_setting(["Normal", "Seperate", "Hide"])
+            )).dropdown_setting(["Normal", "Separate", "Hide"])
         );
 
         settings_wrapper.appendChild(
@@ -1427,7 +1464,7 @@ function create_main_div(wait_for_new_releases_promise) {
         settings_wrapper.appendChild(
             (new Setting(
                 "Release Name Blacklist Regexes",
-                "Blacklist releases by their names from being displayed/fetched using regex. Seperate by new line. Each regex is case insensitive. Test your regexes in the browser, as JS' regex is a bit wonky.",
+                "Blacklist releases by their names from being displayed/fetched using regex. Separate by new line. Each regex is case insensitive. Test your regexes in the browser, as JS' regex is a bit wonky.",
                 config.filters, "release_name",
                 "span 6"
             )).text_setting((release_name_regexes) => {
@@ -1438,7 +1475,7 @@ function create_main_div(wait_for_new_releases_promise) {
         settings_wrapper.appendChild(
             (new Setting(
                 "Song Name Blacklist Regexes",
-                "Blacklist songs by their names from getting added to a playlist using regex. Seperate by new line. Each regex is case insensitive. Test your regexes in the browser, as JS' regex is a bit wonky.",
+                "Blacklist songs by their names from getting added to a playlist using regex. Separate by new line. Each regex is case insensitive. Test your regexes in the browser, as JS' regex is a bit wonky.",
                 config.filters, "song_name",
                 "span 6"
             )).text_setting((song_name_regexes) => {
@@ -1449,7 +1486,7 @@ function create_main_div(wait_for_new_releases_promise) {
         settings_wrapper.appendChild(
             (new Setting(
                 "Artist ID Blacklist",
-                "Blacklist contributors by their ID (the numbers in the url). Seperate with comma. 5080 is the ID for 'Various Artists'",
+                "Blacklist contributors by their ID (the numbers in the url). Separate with comma. 5080 is the ID for 'Various Artists'",
                 config.filters, "contributor_id",
                 "span 6"
             )).text_setting((artist_ids_str) => {
@@ -1464,6 +1501,7 @@ function create_main_div(wait_for_new_releases_promise) {
     reload_button.textContent = "\u27F3";
     reload_button.title = "Scan for new songs. This reloads the page. Use after changing a setting or if something broke.";
     reload_button.onclick = () => {
+        debug("Clearing cache and reloading");
         cache[user_id].new_releases = [];
         cache[user_id].last_checked = 0;
         set_cache(cache);
@@ -1509,7 +1547,11 @@ function create_main_btn(wrapper_div) {
     main_btn.onclick = () => {
         const is_closed = wrapper_div.classList.toggle("hide");
         if (!is_closed) {
-            last_checked_span.textContent = `Last Update - ${time_ago(cache[user_id].last_checked)}`;
+            if (cache[user_id].last_checked && cache[user_id.last_checked !== 0]) {
+                last_checked_span.textContent = `Last Update - ${time_ago(cache[user_id].last_checked)}`;
+            } else {
+                last_checked_span.textContent = "Currently updating...";
+            }
         }
     }
     return [parent_div, main_btn];
@@ -1532,6 +1574,7 @@ async function main() {
     if (parent_div) {
         create_ui(parent_div);
     } else {
+        debug("Waiting for parent");
         const observer = new MutationObserver(mutations => {
             for (let mutation of mutations) {
                 if (mutation.type === 'childList') {
@@ -1604,7 +1647,7 @@ async function main() {
         main_div.append(...new_releases_divs);
         main_btn.classList.remove("loading");
         if (config.playlist_id) {
-            log("Adding songs to playlist", config.playlist_id);
+            log("Beginning adding songs to playlist", config.playlist_id);
             main_btn.classList.add("adding_releases");
             await add_new_releases_to_playlist(config.playlist_id, new_releases, api_token);
             main_btn.classList.remove("adding_releases");
