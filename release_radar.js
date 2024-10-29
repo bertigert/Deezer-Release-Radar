@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Deezer Release Radar
 // @namespace    Violentmonkey Scripts
-// @version      1.2.3-dev
+// @version      1.2.4
 // @author       Bababoiiiii
 // @description  Adds a new button on the deezer page allowing you to see new releases of artists you follow.
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=deezer.com
@@ -482,6 +482,9 @@ function migrate_config(config, CURRENT_CONFIG_VERSION) {
         ],
         [
             [null, "simultaneous_artists", 10]
+        ],
+        [
+            [null, "compact_mode", 0]
         ]
     ]
 
@@ -505,7 +508,7 @@ function migrate_config(config, CURRENT_CONFIG_VERSION) {
 }
 
 function get_config() {
-    const CURRENT_CONFIG_VERSION = 1;
+    const CURRENT_CONFIG_VERSION = 2;
 
     let config = localStorage.getItem("release_radar_config");
     if (config) {
@@ -526,7 +529,7 @@ function get_config() {
         max_song_age: 30,
         open_in_app: false,
         playlist_id: null,
-        compact_mode: false,
+        compact_mode: 0,
         filters: {
             "contributor_id": ["5080"], // 5080 = Various Artists
             "release_name": [String.raw`(\(|- )(((super )?slowed(( *&| *\+| *,) *reverb)?)|(sped up)|(reverb)|(8d audio)|(speed))( version)?\)? *$`],
@@ -718,6 +721,7 @@ function set_css() {
     width: 375px;
     overflow: hidden;
     border-radius: 10px;
+    cursor: default;
 }
 
 .release_radar_main_div {
@@ -742,9 +746,6 @@ function set_css() {
     font-size: var(--tempo-fontSizes-heading-m);
     line-height: var(--tempo-lineHeights-heading-m);
     border-bottom: 1px solid var(--tempo-colors-divider-main);
-}
-.release_radar_main_div_header_div > span {
-    cursor: default;
 }
 
 .release_radar_main_div_header_div > button {
@@ -775,12 +776,12 @@ function set_css() {
     display: flex;
     flex-direction: column;
     color: var(--tempo-colors-text-neutral-secondary-default);
-    cursor: default;
 }
 
 .release_radar_main_div_header_div > div > label > input,
 .release_radar_main_div_header_div > div > label > textarea,
-.release_radar_main_div_header_div > div > label > select {
+.release_radar_main_div_header_div > div > label > select,
+.release_radar_main_div_header_div > div > label > button {
     background-color: var(--tempo-colors-background-neutral-tertiary-default);
     border: 1px var(--tempo-colors-border-neutral-primary-default) solid;
     border-radius: var(--tempo-radii-s);
@@ -801,13 +802,17 @@ function set_css() {
 }
 .release_radar_main_div_header_div > div > label > input:hover,
 .release_radar_main_div_header_div > div > label > textarea:hover,
-.release_radar_main_div_header_div > div > label > select:hover {
+.release_radar_main_div_header_div > div > label > select:hover,
+.release_radar_main_div_header_div > div > label > button:hover {
     background-color: var(--tempo-colors-background-neutral-tertiary-hovered);
 }
 .release_radar_main_div_header_div > div > label > input:focus,
 .release_radar_main_div_header_div > div > label > textarea:focus,
 .release_radar_main_div_header_div > div > label > select:focus {
     border-color: var(--tempo-colors-border-neutral-primary-focused);
+}
+.release_radar_main_div_header_div > div > label > button:active {
+    background-color: var(--color-grey-500);
 }
 
 .release_radar_main_div_header_div > div > label > input[type='checkbox'] {
@@ -849,7 +854,7 @@ function set_css() {
     position: relative;
 }
 .release_radar_img_container_div > img {
-    border: 2px solid transparent;
+    border: 1px solid transparent;
     border-radius: var(--tempo-radii-xs);
     cursor: pointer;
 }
@@ -917,8 +922,7 @@ function set_css() {
     animation-direction: reverse;
 }
 
-
-.release_radar_song_info_div {
+.release_radar_top_info_div {
     display: flex;
     flex-direction: column;
     height: auto;
@@ -926,19 +930,19 @@ function set_css() {
     max-width: 80%;
 }
 
-.release_radar_song_info_div * {
+.release_radar_top_info_div * {
     padding-left: 15px;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
     max-width: fit-content;
 }
-.release_radar_song_info_div > a {
+.release_radar_top_info_div > a {
     position: relative;
-    padding-right: 35px;
+    padding-right: 20px;
     font-size: 16px;
 }
-.release_radar_release_li.is_new .release_radar_song_info_div > a::before {
+.release_radar_release_li.is_new .release_radar_top_info_div > a::before {
     content: "";
     display: inline-block;
     width: 12px;
@@ -947,8 +951,8 @@ function set_css() {
     background-color: var(--tempo-colors-background-accent-primary-default);
     margin-right: 5px;
 }
-.release_radar_release_li.is_feature .release_radar_song_info_div > a::after {
-    content: "feat.";
+.release_radar_release_li.is_feature .release_radar_top_info_div > a::after {
+    content: "f.";
     position: absolute;
     right: 0;
     padding: 3px;
@@ -963,7 +967,7 @@ function set_css() {
     cursor: pointer;
 }
 
-.release_radar_song_info_div > div {
+.release_radar_top_info_div > div {
     color: var(--tempo-colors-text-neutral-secondary-default);
     font-size: 14px;
 }
@@ -984,23 +988,56 @@ function set_css() {
 .release_radar_main_div.compact .release_radar_release_li {
     padding: 4px 16px;
 }
-.release_radar_main_div.compact .release_radar_release_li > div > div.release_radar_img_container_div {
-    display: none;
-}
-.release_radar_main_div.compact .release_radar_release_li > div > .release_radar_song_info_div {
+.release_radar_main_div.compact .release_radar_release_li > div > .release_radar_top_info_div {
     padding-top: 0px;
 }
-.release_radar_main_div.compact .release_radar_release_li > div > .release_radar_song_info_div > a {
-    padding-left: 0px;
+.release_radar_main_div.compact .release_radar_release_li > div > .release_radar_top_info_div > a {
     font-size: 14px;
 }
-.release_radar_main_div.compact .release_radar_release_li > div > .release_radar_song_info_div > div {
-    padding-left: 0px;
+.release_radar_main_div.compact .release_radar_release_li > div > .release_radar_top_info_div > div {
     font-size: 13px;
 }
 .release_radar_main_div.compact .release_radar_release_li > .release_radar_bottom_info_div {
     margin-top: 1px;
     font-size: 11px;
+}
+
+.release_radar_main_div.compact .release_radar_release_li > div > div.release_radar_img_container_div {
+    width: 40px;
+}
+.release_radar_main_div.no_image .release_radar_release_li > div > .release_radar_top_info_div {
+    max-width: 100%;
+}
+.release_radar_main_div.no_image .release_radar_release_li > div > .release_radar_top_info_div > a {
+    padding-left: 0px;
+}
+.release_radar_main_div.no_image .release_radar_release_li > div > .release_radar_top_info_div > div {
+    padding-left: 0px;
+}
+.release_radar_main_div.no_image .release_radar_release_li.is_favorite .release_radar_top_info_div {
+    padding-right: 7px;
+}
+.release_radar_main_div.no_image .release_radar_release_li.is_favorite .release_radar_top_info_div:after {
+    color: var(--tempo-colors-text-accent-primary-default);
+    content: "❤︎";
+    position: absolute;
+    right: 2px;
+}
+
+.release_radar_main_div.no_image .release_radar_release_li > div > div.release_radar_img_container_div {
+    display: none;
+}
+.release_radar_main_div.no_image .release_radar_release_li {
+    padding-top: 8px;
+}
+.release_radar_main_div.minimal .release_radar_release_li {
+    padding: 8px 8px 8px 16px;
+}
+.release_radar_main_div.minimal .release_radar_release_li > div > .release_radar_top_info_div {
+    flex-direction: row;
+}
+.release_radar_main_div.minimal .release_radar_release_li a {
+    padding-right: 14px;
 }
 
 .filtered {
@@ -1009,6 +1046,16 @@ function set_css() {
 `;
 
     document.querySelector("head").appendChild(css);
+}
+
+function set_compact_mode(main_div) {
+    if (config.compact_mode === 0) {
+        main_div.classList.remove("compact", "no_image", "minimal");
+        return;
+    }
+    main_div.classList.add("compact");
+    main_div.classList.toggle("no_image", config.compact_mode >= 2);
+    main_div.classList.toggle("minimal", config.compact_mode === 3);
 }
 
 function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) {
@@ -1113,7 +1160,7 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
         image_container_div.append(release_img, play_button);
 
         const song_info_div = document.createElement("div");
-        song_info_div.className = "release_radar_song_info_div";
+        song_info_div.className = "release_radar_top_info_div";
 
         const song_title_a = document.createElement("a");
         song_title_a.href = `${(config.open_in_app ? "deezer" : "https")}://www.deezer.com/${language}/album/${release.id}`;
@@ -1139,6 +1186,7 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
 
         const artists_div = document.createElement("div");
         artists_div.textContent = release.artists.map(a => a[0]).join(", ");
+        artists_div.title = artists_div.textContent;
 
         song_info_div.append(song_title_a, artists_div);
 
@@ -1297,6 +1345,14 @@ class Setting {
         this.setting_label.appendChild(setting_input);
         return this.setting_label;
     }
+
+    button_setting(text, on_click) {
+        const setting_input = document.createElement("button");
+        setting_input.textContent = text;
+        setting_input.onclick = on_click;
+        this.setting_label.appendChild(setting_input);
+        return this.setting_label;
+    }
 }
 
 
@@ -1313,7 +1369,7 @@ function create_main_div(wait_for_new_releases_promise) {
     const main_div = document.createElement("div");
     main_div.className = "release_radar_main_div";
     if (config.compact_mode) {
-        main_div.classList.add("compact");
+        set_compact_mode(main_div);
     }
 
     const header_wrapper_div = document.createElement("div");
@@ -1338,6 +1394,14 @@ function create_main_div(wait_for_new_releases_promise) {
     settings_button.textContent = "\u2699";
     settings_button.title = "Settings";
 
+    const filter_releases = async (args) => {
+        const new_releases = await wait_for_new_releases_promise;
+        const all_releases = main_div.querySelectorAll("li.release_radar_release_li");
+        new_releases.forEach((release, i) => {
+            all_releases[i].classList.toggle("filtered", is_release_filtered(release));
+        });
+    }
+
     let show = false;
     let settings_wrapper;
     settings_button.onclick = () => {
@@ -1352,66 +1416,9 @@ function create_main_div(wait_for_new_releases_promise) {
 
         settings_wrapper.appendChild(
             (new Setting(
-                "Max. Songs",
-                "The maximum amount of songs displayed at once. Only applies after a new scan.",
-                config, "max_song_count",
-                "span 2"
-            )).number_setting()
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Max. Age",
-                "The maximum age of a displayed song (in days). This affects how many requests are made, so keep it low to avoid performance/ratelimit issues. Only applies after a new scan.",
-                config, "max_song_age",
-                "span 2"
-            )).number_setting()
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Playlist",
-                "The ID of the playlist in which to store new songs in (the numbers in the url). Empty in order to not save. Songs only get added after a page reload.",
-                config, "playlist_id",
-                "span 2"
-            )).number_setting((playlist_id) => playlist_id.trim() === "" ? null : parseInt(playlist_id).toString())
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Dense", // help i cant do compact bc its too wide
-                "Make everything more compact, allowing for more songs to be viewed at once.",
-                config, "compact_mode",
-                "span 1"
-            )).checkbox_setting(null, (checked) => {
-                main_div.classList.toggle("compact", checked);
-            })
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "App",
-                "Open the links in the deezer desktop app.",
-                config, "open_in_app",
-                "span 1"
-            )).checkbox_setting(null, (checked) => {
-                main_div.querySelectorAll("a").forEach(a => a.href = a.href.replace(checked ? "https" : "deezer", checked ? "deezer" : "https"));
-            })
-        );
-
-        const filter_releases = async (args) => {
-            const new_releases = await wait_for_new_releases_promise;
-            const all_releases = main_div.querySelectorAll("li.release_radar_release_li");
-            new_releases.forEach((release, i) => {
-                all_releases[i].classList.toggle("filtered", is_release_filtered(release));
-            });
-        }
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Feat.",
-                "Include Features. This also includes albums by 'Various artists', to avoid this, blacklist that 'artist' with the ID (5080).",
-                config.types, "features",
+                "Albums",
+                "Include Albums",
+                config.types, "albums",
                 "span 1"
             )).checkbox_setting(null, filter_releases)
         );
@@ -1436,9 +1443,9 @@ function create_main_div(wait_for_new_releases_promise) {
 
         settings_wrapper.appendChild(
             (new Setting(
-                "Albums",
-                "Include Albums",
-                config.types, "albums",
+                "Feat.",
+                "Include Features. This also includes albums by 'Various artists', to avoid this, blacklist that 'artist' with the ID (5080).",
+                config.types, "features",
                 "span 1"
             )).checkbox_setting(null, filter_releases)
         );
@@ -1454,11 +1461,60 @@ function create_main_div(wait_for_new_releases_promise) {
 
         settings_wrapper.appendChild(
             (new Setting(
+                "Max. Songs",
+                "The maximum amount of songs displayed at once. Only applies after a new scan.",
+                config, "max_song_count",
+                "span 2"
+            )).number_setting(null, null, [0, null, 5])
+        );
+
+        settings_wrapper.appendChild(
+            (new Setting(
+                "Max. Age",
+                "The maximum age of a displayed song (in days). This affects how many requests are made, so keep it low to avoid performance/ratelimit issues. Only applies after a new scan.",
+                config, "max_song_age",
+                "span 2"
+            )).number_setting(null, null, [0, null, 5])
+        );
+
+        settings_wrapper.appendChild(
+            (new Setting(
                 "Parallelism",
                 "How many artists are handled simultaneously. This has a high impact on the speed of fetching the releases. If you get ratelimited or frequent errors occur, turn this down.",
                 config, "simultaneous_artists",
                 "span 2"
-            )).number_setting()
+            )).number_setting(null, null, [1, null, 1])
+        );
+
+        settings_wrapper.appendChild(
+            (new Setting(
+                "Playlist",
+                "The ID of the playlist in which to store new songs in (the numbers in the url). Empty in order to not save. Songs only get added after a page reload.",
+                config, "playlist_id",
+                "span 2"
+            )).number_setting((playlist_id) => playlist_id.trim() === "" ? null : parseInt(playlist_id).toString())
+        );
+
+        settings_wrapper.appendChild(
+            (new Setting(
+                "Density", // help i cant do compact bc its too wide
+                "Make everything more compact, allowing for more songs to be viewed at once.",
+                config, "compact_mode",
+                "span 2"
+            )).dropdown_setting(["Normal", "Compact", "No image", "Minimal"], null, () => {
+                set_compact_mode(main_div);
+            })
+        );
+
+        settings_wrapper.appendChild(
+            (new Setting(
+                "App",
+                "Open the links in the deezer desktop app.",
+                config, "open_in_app",
+                "span 1"
+            )).checkbox_setting(null, (checked) => {
+                main_div.querySelectorAll("a").forEach(a => a.href = a.href.replace(checked ? "https" : "deezer", checked ? "deezer" : "https"));
+            })
         );
 
         settings_wrapper.appendChild(
@@ -1492,6 +1548,48 @@ function create_main_div(wait_for_new_releases_promise) {
             )).text_setting((artist_ids_str) => {
                 return artist_ids_str.split(",").map(l => Number(l.trim()) ? l.trim() : null).filter(id => id !== null); // ignore faulty ones
             }, filter_releases)
+        );
+
+        settings_wrapper.appendChild(
+            (new Setting(
+                "Export Config",
+                "Copy your config to the clipboard.",
+                null, null,
+                "span 2"
+            )).button_setting("\u2912", () => {
+                navigator.clipboard.writeText(JSON.stringify(config, null, 4));
+            })
+        );
+
+        settings_wrapper.appendChild(
+            (new Setting(
+                "Import Config",
+                "Import a config from the clipboard. Requires a hard page reload to apply visually. Requires the clipboard permission in the browser. Note that you have the full responisiblity to validate the correctness of the config.",
+                null, null,
+                "span 2"
+            )).button_setting("\u2913", async () => {
+                const has_clipboard = await navigator.permissions.query({ name: 'clipboard-read' })
+                if (has_clipboard.state === 'granted' || has_clipboard.state === 'prompt') {
+                    try {
+                        const new_config = JSON.parse(await navigator.clipboard.readText());
+                        set_config(new_config);
+                        log("Imported config");
+                    } catch (e) {
+                        error("Failed importing config from clipboard", e);
+                    }
+                }
+            })
+        );
+
+        settings_wrapper.appendChild(
+            (new Setting(
+                "Delete Config",
+                "Delete your current config. Can fix issues, backup your regexes etc. before deleting.",
+                null, null,
+                "span 2"
+            )).button_setting("\u{1F5D1}", () => {
+                localStorage.removeItem("release_radar_config");
+            })
         );
 
         header_wrapper_div.appendChild(settings_wrapper);
