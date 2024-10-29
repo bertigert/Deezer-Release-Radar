@@ -15,7 +15,7 @@ Thanks to the [DeezMod](https://github.com/bababoi-2/DeezMod) project we can now
 - Allows you to blacklist releases using regex
 - Allows you to blacklist artists using their ID
 - Allows you to open the releases in the desktop app
-- 
+- Highly configurable
 - Scans for new artists every day, songs on deezer get released at midnight UTC
 - Allows you to play songs directly from within the radar, view the cover images in 1920x1920 resolution, supports ajax loading of releases
 - Note: When launching for the first time, all songs are considered new
@@ -23,3 +23,6 @@ Thanks to the [DeezMod](https://github.com/bababoi-2/DeezMod) project we can now
 ## Links
 [Greazyfork](https://greasyfork.org/en/scripts/510955-deezer-release-radar)\
 [GitHub](https://github.com/bababoi-2/Deezer-Release-Radar)
+
+## Thanks
+https://github.com/doubouil for helping me improve this script
