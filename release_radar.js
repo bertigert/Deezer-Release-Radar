@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Deezer Release Radar
 // @namespace    Violentmonkey Scripts
-// @version      1.2.4
+// @version      1.2.5-dev
 // @author       Bababoiiiii
 // @description  Adds a new button on the deezer page allowing you to see new releases of artists you follow.
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=deezer.com
@@ -10,7 +10,6 @@
 
 // TODO:
 // add to x playlist if from y artist
-// config import/export
 // cloud config syncing
 // better debug logging
 
@@ -710,8 +709,8 @@ function set_css() {
     z-index: 1;
     top: 34px;
 }
-.release_radar_wrapper_div.hide {
-    display: none;
+.hide {
+    display: none !important;
 }
 
 .release_radar_popper_div {
@@ -762,14 +761,16 @@ function set_css() {
     grid-template-columns: repeat(6, minmax(0, 6fr));
     gap: 7px 10px;
     margin-top: 10px;
-    max-height: 200px;
+    max-height: 250px;
     overflow: auto;
-    scrollbar-width: none;
+    scrollbar-width: thin;
+    padding-right: 5px;
+    width: calc(100% + 5px + 10px);
     font-size: 12px;
     font-weight: normal;
 }
 .release_radar_settings_wrapper_div::-webkit-scrollbar {
-    display: none;
+    width: 10px;
 }
 
 .release_radar_main_div_header_div > div > label {
@@ -1039,10 +1040,6 @@ function set_css() {
 .release_radar_main_div.minimal .release_radar_release_li a {
     padding-right: 14px;
 }
-
-.filtered {
-    display: none;
-}
 `;
 
     document.querySelector("head").appendChild(css);
@@ -1224,7 +1221,7 @@ function create_new_releases_lis(new_releases, main_btn, wrapper_div, language) 
 
         // filter releases which are cached but not in the wanted selection anymore (e.g. Feat. was unchecked without reloading the cache)
         if (is_release_filtered(release)) {
-            release_li.classList.add("filtered");
+            release_li.classList.add("hide");
         }
 
         return release_li;
@@ -1398,201 +1395,196 @@ function create_main_div(wait_for_new_releases_promise) {
         const new_releases = await wait_for_new_releases_promise;
         const all_releases = main_div.querySelectorAll("li.release_radar_release_li");
         new_releases.forEach((release, i) => {
-            all_releases[i].classList.toggle("filtered", is_release_filtered(release));
+            all_releases[i].classList.toggle("hide", is_release_filtered(release));
         });
     }
 
+    const settings_wrapper = document.createElement("div");
+    settings_wrapper.className = "release_radar_settings_wrapper_div hide";
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Albums",
+            "Include Albums",
+            config.types, "albums",
+            "span 1"
+        )).checkbox_setting(null, filter_releases)
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Singles",
+            "Include Singles",
+            config.types, "singles",
+            "span 1"
+        )).checkbox_setting(null, filter_releases)
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "EPs",
+            "Include EPs",
+            config.types, "eps",
+            "span 1"
+        )).checkbox_setting(null, filter_releases)
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Feat.",
+            "Include Features. This also includes albums by 'Various artists', to avoid this, blacklist that 'artist' with the ID (5080).",
+            config.types, "features",
+            "span 1"
+        )).checkbox_setting(null, filter_releases)
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Upcoming",
+            "How to handle upcoming releases. Only applies after a page reload.",
+            config.types, "upcoming_releases",
+            "span 2"
+        )).dropdown_setting(["Normal", "Separate", "Hide"])
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Max. Songs",
+            "The maximum amount of songs displayed at once. Only applies after a new scan.",
+            config, "max_song_count",
+            "span 2"
+        )).number_setting(null, null, [0, null, 5])
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Max. Age",
+            "The maximum age of a displayed song (in days). This affects how many requests are made, so keep it low to avoid performance/ratelimit issues. Only applies after a new scan.",
+            config, "max_song_age",
+            "span 2"
+        )).number_setting(null, null, [0, null, 5])
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Parallelism",
+            "How many artists are handled simultaneously. This has a high impact on the speed of fetching the releases. If you get ratelimited or frequent errors occur, turn this down.",
+            config, "simultaneous_artists",
+            "span 2"
+        )).number_setting(null, null, [1, null, 1])
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Playlist",
+            "The ID of the playlist in which to store new songs in (the numbers in the url). Empty in order to not save. Songs only get added after a page reload.",
+            config, "playlist_id",
+            "span 2"
+        )).number_setting((playlist_id) => playlist_id.trim() === "" ? null : parseInt(playlist_id).toString())
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Density", // help i cant do compact bc its too wide
+            "Make everything more compact, allowing for more songs to be viewed at once.",
+            config, "compact_mode",
+            "span 2"
+        )).dropdown_setting(["Normal", "Compact", "No image", "Minimal"], null, () => {
+            set_compact_mode(main_div);
+        })
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "App",
+            "Open the links in the deezer desktop app.",
+            config, "open_in_app",
+            "span 1"
+        )).checkbox_setting(null, (checked) => {
+            main_div.querySelectorAll("a").forEach(a => a.href = a.href.replace(checked ? "https" : "deezer", checked ? "deezer" : "https"));
+        })
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Release Name Blacklist Regexes",
+            "Blacklist releases by their names from being displayed/fetched using regex. Separate by new line. Each regex is case insensitive. Test your regexes in the browser, as JS' regex is a bit wonky.",
+            config.filters, "release_name",
+            "span 6"
+        )).text_setting((release_name_regexes) => {
+            return release_name_regexes.split("\n").filter(r => r.trim() !== "");
+        }, filter_releases)
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Song Name Blacklist Regexes",
+            "Blacklist songs by their names from getting added to a playlist using regex. Separate by new line. Each regex is case insensitive. Test your regexes in the browser, as JS' regex is a bit wonky.",
+            config.filters, "song_name",
+            "span 6"
+        )).text_setting((song_name_regexes) => {
+            return song_name_regexes.split("\n").filter(r => r.trim() !== "");
+        })
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Artist ID Blacklist",
+            "Blacklist contributors by their ID (the numbers in the url). Separate with comma. 5080 is the ID for 'Various Artists'",
+            config.filters, "contributor_id",
+            "span 6"
+        )).text_setting((artist_ids_str) => {
+            return artist_ids_str.split(",").map(l => Number(l.trim()) ? l.trim() : null).filter(id => id !== null); // ignore faulty ones
+        }, filter_releases)
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Export Config",
+            "Copy your config to the clipboard.",
+            null, null,
+            "span 2"
+        )).button_setting("\u2912", () => {
+            navigator.clipboard.writeText(JSON.stringify(config, null, 4));
+        })
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Import Config",
+            "Import a config from the clipboard. Requires a hard page reload to apply visually. Requires the clipboard permission in the browser. Note that you have the full responisiblity to validate the correctness of the config.",
+            null, null,
+            "span 2"
+        )).button_setting("\u2913", async () => {
+            const has_clipboard = await navigator.permissions.query({ name: 'clipboard-read' })
+            if (has_clipboard.state === 'granted' || has_clipboard.state === 'prompt') {
+                try {
+                    const new_config = JSON.parse(await navigator.clipboard.readText());
+                    set_config(new_config);
+                    log("Imported config");
+                } catch (e) {
+                    error("Failed importing config from clipboard", e);
+                }
+            }
+        })
+    );
+
+    settings_wrapper.appendChild(
+        (new Setting(
+            "Delete Config",
+            "Delete your current config. Can fix issues, backup your regexes etc. before deleting.",
+            null, null,
+            "span 2"
+        )).button_setting("\u2716", () => {
+            localStorage.removeItem("release_radar_config");
+        })
+    );
+
+
     let show = false;
-    let settings_wrapper;
     settings_button.onclick = () => {
         show = !show;
-        if (!show) {
-            settings_wrapper?.remove();
-            return;
-        }
-
-        settings_wrapper = document.createElement("div");
-        settings_wrapper.className = "release_radar_settings_wrapper_div";
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Albums",
-                "Include Albums",
-                config.types, "albums",
-                "span 1"
-            )).checkbox_setting(null, filter_releases)
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Singles",
-                "Include Singles",
-                config.types, "singles",
-                "span 1"
-            )).checkbox_setting(null, filter_releases)
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "EPs",
-                "Include EPs",
-                config.types, "eps",
-                "span 1"
-            )).checkbox_setting(null, filter_releases)
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Feat.",
-                "Include Features. This also includes albums by 'Various artists', to avoid this, blacklist that 'artist' with the ID (5080).",
-                config.types, "features",
-                "span 1"
-            )).checkbox_setting(null, filter_releases)
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Upcoming",
-                "How to handle upcoming releases. Only applies after a page reload.",
-                config.types, "upcoming_releases",
-                "span 2"
-            )).dropdown_setting(["Normal", "Separate", "Hide"])
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Max. Songs",
-                "The maximum amount of songs displayed at once. Only applies after a new scan.",
-                config, "max_song_count",
-                "span 2"
-            )).number_setting(null, null, [0, null, 5])
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Max. Age",
-                "The maximum age of a displayed song (in days). This affects how many requests are made, so keep it low to avoid performance/ratelimit issues. Only applies after a new scan.",
-                config, "max_song_age",
-                "span 2"
-            )).number_setting(null, null, [0, null, 5])
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Parallelism",
-                "How many artists are handled simultaneously. This has a high impact on the speed of fetching the releases. If you get ratelimited or frequent errors occur, turn this down.",
-                config, "simultaneous_artists",
-                "span 2"
-            )).number_setting(null, null, [1, null, 1])
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Playlist",
-                "The ID of the playlist in which to store new songs in (the numbers in the url). Empty in order to not save. Songs only get added after a page reload.",
-                config, "playlist_id",
-                "span 2"
-            )).number_setting((playlist_id) => playlist_id.trim() === "" ? null : parseInt(playlist_id).toString())
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Density", // help i cant do compact bc its too wide
-                "Make everything more compact, allowing for more songs to be viewed at once.",
-                config, "compact_mode",
-                "span 2"
-            )).dropdown_setting(["Normal", "Compact", "No image", "Minimal"], null, () => {
-                set_compact_mode(main_div);
-            })
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "App",
-                "Open the links in the deezer desktop app.",
-                config, "open_in_app",
-                "span 1"
-            )).checkbox_setting(null, (checked) => {
-                main_div.querySelectorAll("a").forEach(a => a.href = a.href.replace(checked ? "https" : "deezer", checked ? "deezer" : "https"));
-            })
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Release Name Blacklist Regexes",
-                "Blacklist releases by their names from being displayed/fetched using regex. Separate by new line. Each regex is case insensitive. Test your regexes in the browser, as JS' regex is a bit wonky.",
-                config.filters, "release_name",
-                "span 6"
-            )).text_setting((release_name_regexes) => {
-                return release_name_regexes.split("\n").filter(r => r.trim() !== "");
-            }, filter_releases)
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Song Name Blacklist Regexes",
-                "Blacklist songs by their names from getting added to a playlist using regex. Separate by new line. Each regex is case insensitive. Test your regexes in the browser, as JS' regex is a bit wonky.",
-                config.filters, "song_name",
-                "span 6"
-            )).text_setting((song_name_regexes) => {
-                return song_name_regexes.split("\n").filter(r => r.trim() !== "");
-            })
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Artist ID Blacklist",
-                "Blacklist contributors by their ID (the numbers in the url). Separate with comma. 5080 is the ID for 'Various Artists'",
-                config.filters, "contributor_id",
-                "span 6"
-            )).text_setting((artist_ids_str) => {
-                return artist_ids_str.split(",").map(l => Number(l.trim()) ? l.trim() : null).filter(id => id !== null); // ignore faulty ones
-            }, filter_releases)
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Export Config",
-                "Copy your config to the clipboard.",
-                null, null,
-                "span 2"
-            )).button_setting("\u2912", () => {
-                navigator.clipboard.writeText(JSON.stringify(config, null, 4));
-            })
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Import Config",
-                "Import a config from the clipboard. Requires a hard page reload to apply visually. Requires the clipboard permission in the browser. Note that you have the full responisiblity to validate the correctness of the config.",
-                null, null,
-                "span 2"
-            )).button_setting("\u2913", async () => {
-                const has_clipboard = await navigator.permissions.query({ name: 'clipboard-read' })
-                if (has_clipboard.state === 'granted' || has_clipboard.state === 'prompt') {
-                    try {
-                        const new_config = JSON.parse(await navigator.clipboard.readText());
-                        set_config(new_config);
-                        log("Imported config");
-                    } catch (e) {
-                        error("Failed importing config from clipboard", e);
-                    }
-                }
-            })
-        );
-
-        settings_wrapper.appendChild(
-            (new Setting(
-                "Delete Config",
-                "Delete your current config. Can fix issues, backup your regexes etc. before deleting.",
-                null, null,
-                "span 2"
-            )).button_setting("\u{1F5D1}", () => {
-                localStorage.removeItem("release_radar_config");
-            })
-        );
-
-        header_wrapper_div.appendChild(settings_wrapper);
+        settings_wrapper.classList.toggle("hide", !show);
     }
 
     const reload_button = document.createElement("button");
@@ -1606,7 +1598,7 @@ function create_main_div(wait_for_new_releases_promise) {
         location.reload();
     }
 
-    header_wrapper_div.append(header_span, mark_all_as_seen_button, reload_button, settings_button);
+    header_wrapper_div.append(header_span, mark_all_as_seen_button, reload_button, settings_button, settings_wrapper);
 
     const last_checked_span = document.createElement("span");
     last_checked_span.className = "release_radar_last_checked_span";
