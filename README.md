@@ -11,7 +11,7 @@ Due to a bug in the Deezer API, some artists are bugged and dont return releases
 
 ## Functionality
 - Adds a menu item right besides the notifications icon
-- Allows you to limit the amount of releases by amount or age (highly recommended as the higher the age limit, the more requests we need to make)
+- Allows you to limit the amount of displayed releases by amount or age or last scan time (highly recommended as the higher the age limit, the more requests we need to make)
 - Lets you choose if you want to include Features, Singles, EPs, Albums
 - Allows you to add new songs to a specified playlist (by ID), features a blacklist using regex to filter out songs with a specific name
 - Allows you to seperate/hide Upcoming Releases
@@ -19,9 +19,9 @@ Due to a bug in the Deezer API, some artists are bugged and dont return releases
 - Allows you to blacklist artists using their ID
 - Allows you to open the releases in the desktop app
 - Highly configurable
-- Scans for new artists every day, songs on deezer get released at midnight UTC
+- Scans for new artists every day, songs on deezer get released at midnight UTC (idk tbh)
 - Allows you to play songs directly from within the radar, view the cover images in 1920x1920 resolution, supports ajax loading of releases
-- Note: When launching for the first time, all songs are considered new
+- Note: When launching for the first time, all songs are considered new. It uses localstorage for cache and config.
 
 ## Links
 [Greazyfork](https://greasyfork.org/en/scripts/510955-deezer-release-radar)\
