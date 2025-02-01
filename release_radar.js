@@ -454,7 +454,8 @@ function is_release_filtered(release, current_time=Date.now()) {
             !config.types.singles && release.type === "SINGLES" || // filter singles
             !config.types.albums && release.type === "ALBUM" || // filter albums
             !config.types.eps && release.type === "EP" || // filter EPs
-            (config.types.upcoming_releases === 2 && release.release_date > current_time) || // filter upcoming releases (if set to hide)
+            // upcoming releases dont need to be filtered for the fact that they are upcoming, thats done in the way they are displayed
+            // (config.types.upcoming_releases === 2 && release.release_date > current_time) || // filter upcoming releases (if set to hide)
             config.filters.contributor_id.some(id => release.artists.some(artist => artist[1] === id)) || // filter contributors by id
             config.filters.release_name.some(regex_str => (new RegExp(regex_str, "i")).test(release.name)) // filter releases by their name using regex
 }
@@ -1291,31 +1292,37 @@ function create_new_releases_lis(new_releases, main_btn) {
     const past_releases = new_releases.filter(r => r.release_date <= now);
     const past_releases_lis = past_releases.map(r => create_release_li(r));
 
+    const releases_to_be_returned = [];
+
     let upcoming_releases_lis = [];
     const upcoming_releases = new_releases.filter(r => r.release_date > now);
+    if (upcoming_releases.length > 0) {
+        upcoming_releases_lis = upcoming_releases.map(r => create_release_li(r))
+        const upcoming_releases_details = document.createElement("details");
+        upcoming_releases_details.className = "release_radar_upcoming_releases_details";
 
-    upcoming_releases_lis = upcoming_releases.map(r => create_release_li(r))
-    const upcoming_releases_details = document.createElement("details");
-    upcoming_releases_details.className = "release_radar_upcoming_releases_details";
-
-    const upcoming_releases_details_summary = document.createElement("summary");
-    upcoming_releases_details_summary.textContent = upcoming_releases.length+pluralize(" Upcoming Release", upcoming_releases.length);
-    
-    upcoming_releases_details.append(upcoming_releases_details_summary, ...upcoming_releases_lis);
-    
-    if (config.types.upcoming_releases === 0) { // normal
-        upcoming_releases_details_summary.classList.add("hide");
-        upcoming_releases_details.open = true;
-    }
-    else if (config.types.upcoming_releases === 2) { // hide
-        upcoming_releases_details.classList.add("hide");
+        const upcoming_releases_details_summary = document.createElement("summary");
+        upcoming_releases_details_summary.textContent = upcoming_releases.length+pluralize(" Upcoming Release", upcoming_releases.length);
+        
+        upcoming_releases_details.append(upcoming_releases_details_summary, ...upcoming_releases_lis);
+        
+        if (config.types.upcoming_releases === 0) { // normal
+            upcoming_releases_details_summary.classList.add("hide");
+            upcoming_releases_details.open = true;
+        }
+        else if (config.types.upcoming_releases === 2) { // hide
+            upcoming_releases_details.classList.add("hide");
+        }
+        
+        releases_to_be_returned.push(upcoming_releases_details);
     }
 
     if (amount_new_songs <= 0) {
         amount_songs_span.remove();
     }
 
-    return [upcoming_releases_details, ...past_releases_lis];
+    releases_to_be_returned.push(...past_releases_lis);
+    return releases_to_be_returned;
 }
 
 class Setting {
@@ -1452,6 +1459,10 @@ function create_main_div(wait_for_new_releases_promise) {
         new_releases.forEach((release, i) => {
             all_releases[i].classList.toggle("hide", is_release_filtered(release));
         });
+
+        // if all the upcoming releases are filtered out, hide the details element
+        const upcoming_releases_details = main_div.querySelector("details");
+        upcoming_releases_details.classList.toggle("hide", upcoming_releases_details && !upcoming_releases_details.querySelector("li:not(.hide)"));
     }
     
     const settings_wrapper = document.createElement("div");
