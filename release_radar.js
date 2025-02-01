@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Deezer Release Radar
 // @namespace    Violentmonkey Scripts
-// @version      1.2.5-dev
+// @version      1.2.5
 // @author       Bababoiiiii
 // @description  Adds a new button on the deezer page allowing you to see new releases of artists you follow.
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=deezer.com
@@ -9,10 +9,6 @@
 // ==/UserScript==
 
 // TODO:
-// cloud config syncing
-//   check if user is creator of cloud save - No
-//   toggle if live sync should also update the cloud id if it changes
-//   toggle if the cloud id should be automatically changed if a setting changes (spams api). combine with the above
 // add to x playlist if from y artist
 // better debug logging
 // restructure to use more OOP (avoid globals etc)
@@ -399,7 +395,7 @@ async function add_new_releases_to_playlist(playlist_id, new_releases) {
         return;
     }
     debug("Getting songs in playlist", playlist_id);
-    let songs_in_playlist = await get_songs_in_playlist(playlist_id)
+    let songs_in_playlist = await get_songs_in_playlist(playlist_id);
     if (!songs_in_playlist) {
         log("Aborting the adding of new releases to playlist");
         return;
@@ -440,7 +436,7 @@ async function add_new_releases_to_playlist(playlist_id, new_releases) {
         return;
     }
 
-    log("Adding songs to playlust", playlist_id);
+    log("Adding songs to playlist", playlist_id);
     let resp = await add_songs_to_playlist(playlist_id, sorted_songs);
     if (resp.error.length > 0 || resp.error.REQUEST_ERROR) {
         error("Failed to add songs to playlist", playlist_id, resp.error);
@@ -452,120 +448,6 @@ async function add_new_releases_to_playlist(playlist_id, new_releases) {
     resp = await update_order_of_playlist(playlist_id, sorted_songs);
     return resp.results;
 }
-
-async function get_song_info(song_ids) {
-    const r = await safe_fetch("https://www.deezer.com/ajax/gw-light.php?method=song.getListData&input=3&api_version=1.0&api_token=", {
-        "body": JSON.stringify({
-            "SNG_IDS": song_ids
-        }),
-        "method": "POST",
-        "credentials": "include"
-    });
-    const resp = await r.json();
-    if (resp.results.data.length > 0) {
-        return resp.results.data;
-    }
-}
-
-class Cloud {
-    static async _upload_file(filename, file_data) {
-        const blob = new Blob([file_data], { type: "text/plain" });
-        const file = new File([blob], filename, { type: "text/plain" });
-
-        const formData = new FormData();
-        formData.append("file", file, filename);
-
-        const r = await fetch(`https://upload.deezer.com/?sid=${user_data.session_id}&id=0&directory=user&type=audio&file=${filename}`, {
-          method: "POST",
-          body: formData,
-        });
-        const resp = await r.json();
-        if (resp.error.length === 0) {
-            return resp.results; // upload id
-        }
-    }
-
-    static async _remove_uploaded_file(upload_id) {
-        const r = await safe_fetch("https://www.deezer.com/ajax/gw-light.php?method=personal_song.delete&input=3&api_version=1.0&api_token=", {
-            "body": JSON.stringify({
-                "upload_id": -(Math.abs(upload_id))
-            }),
-            "method": "POST",
-            "credentials": "include"
-        });
-        if (r.ok && (await r.json()).error.length === 0) {
-            return true;
-        }
-    }
-
-    static async _get_song_url(song_token) {
-        const r = await fetch("https://media.deezer.com/v1/get_url", {
-            "body": JSON.stringify({
-                "license_token": user_data.license_token,
-                "media": [
-                    {
-                        "type": "FULL",
-                        "formats": [
-                            {
-                                "cipher": "BF_CBC_STRIPE", // all this does not really matter for self uploaded songs
-                                "format": "MP3_MISC"
-                            }
-                        ]
-                    }
-                ],
-                "track_tokens": [song_token]
-            }),
-            "method": "POST",
-        });
-        const resp = await r.json();
-        if (resp.data.length > 0) {
-            return resp.data[0].media[0].sources[0].url;
-        }
-    }
-
-    static async _get_config_from_song(song_url) {
-        const r = await fetch(song_url);
-        if (!r.ok) {
-            return;
-        }
-        const resp = await r.text();
-        return JSON.parse(resp);
-    }
-
-
-    static create_save() {
-        const current_time = Date.now();
-        const file_data = JSON.stringify(config);
-        const filename = `release_radar_cloud_save_${current_time}.json`;
-
-        log("Uploading config");
-        const result_upload_id = this._upload_file(filename, file_data);
-        debug("Config ID:", result_upload_id);
-        if (!this._remove_uploaded_file(result_upload_id)) {
-            log("Failed to remove config file from custom mp3 list");
-        }
-        return result_upload_id;
-    }
-
-    static async retrieve_save(upload_id) {
-        debug("Retrieving config song info");
-        const config_info = await get_song_info([-Math.abs(upload_id)]);
-        if (!config_info) {
-            return;
-        }
-        const song_token = config_info[0].TRACK_TOKEN;
-        debug("Retrieving config song url");
-        const song_url = await this._get_song_url(song_token);
-        if (!song_url) {
-            return;
-        }
-        debug("Retrieving cloud config");
-        const new_config = await this._get_config_from_song(song_url);
-        log("Cloud config:", new_config);
-        return new_config;
-    }
-}
-
 
 function is_release_filtered(release, current_time=Date.now()) {
     return  !config.types.features && release.is_feature || // filter features
@@ -656,12 +538,6 @@ function migrate_config(config, CURRENT_CONFIG_VERSION) {
         ],
         [
             [null, "compact_mode", 0]
-        ],
-        [
-            [null, "cloud", {
-                id: null,
-                live_sync: false
-            }]
         ]
     ]
 
@@ -685,7 +561,7 @@ function migrate_config(config, CURRENT_CONFIG_VERSION) {
 }
 
 function get_config() {
-    const CURRENT_CONFIG_VERSION = 3;
+    const CURRENT_CONFIG_VERSION = 2;
 
     let config = localStorage.getItem("release_radar_config");
     if (config) {
@@ -718,10 +594,6 @@ function get_config() {
             eps: true,
             features: false,
             upcoming_releases: 0 // 0 = show normally, 1 = use dropdown, 2 = hide completely
-        },
-        cloud: {
-            id: null,
-            live_sync: false
         }
     };
 }
@@ -999,23 +871,12 @@ function set_css() {
 }
 
 .release_radar_upcoming_releases_details {
-    border-left: 1px solid var(--tempo-colors-divider-neutral-primary-disabled,var(--color-dark-grey-300));
-    border-bottom: 1px solid var(--tempo-colors-divider-neutral-primary-disabled,var(--color-dark-grey-300));
-}
-@keyframes pulse {
-    0% {
-        filter: brightness(1);
-    }
-    50% {
-        filter: brightness(1.5);
-    }
-    100% {
-        filter: brightness(1);
-    }
+    border-bottom: 1px solid var(--color-dark-grey-500);
 }
 .release_radar_upcoming_releases_details[open] {
-    animation: pulse 0.5s ease-in;
+    border-left: 1px solid var(--color-dark-grey-500);
 }
+
 .release_radar_upcoming_releases_details > summary {
     padding: 5px 15px;
     cursor: pointer;
@@ -1431,29 +1292,30 @@ function create_new_releases_lis(new_releases, main_btn) {
     const past_releases_lis = past_releases.map(r => create_release_li(r));
 
     let upcoming_releases_lis = [];
-    if (config.types.upcoming_releases !== 2) { // not hidden
-        const upcoming_releases = new_releases.filter(r => r.release_date > now);
+    const upcoming_releases = new_releases.filter(r => r.release_date > now);
 
-        if (upcoming_releases.length > 0) {
-            upcoming_releases_lis = upcoming_releases.map(r => create_release_li(r))
+    upcoming_releases_lis = upcoming_releases.map(r => create_release_li(r))
+    const upcoming_releases_details = document.createElement("details");
+    upcoming_releases_details.className = "release_radar_upcoming_releases_details";
 
-            if (config.types.upcoming_releases === 1) { // Separated
-                const upcoming_releases_details = document.createElement("details");
-                upcoming_releases_details.className = "release_radar_upcoming_releases_details";
-                const upcoming_releases_details_summary = document.createElement("summary");
-                upcoming_releases_details_summary.textContent = upcoming_releases.length+pluralize(" Upcoming Release", upcoming_releases.length);
-                upcoming_releases_details.append(upcoming_releases_details_summary, ...upcoming_releases_lis);
-                upcoming_releases_lis = [upcoming_releases_details]; // hacky way to allow the return whether there are upcoming releases or not
-            }
-        }
+    const upcoming_releases_details_summary = document.createElement("summary");
+    upcoming_releases_details_summary.textContent = upcoming_releases.length+pluralize(" Upcoming Release", upcoming_releases.length);
+    
+    upcoming_releases_details.append(upcoming_releases_details_summary, ...upcoming_releases_lis);
+    
+    if (config.types.upcoming_releases === 0) { // normal
+        upcoming_releases_details_summary.classList.add("hide");
+        upcoming_releases_details.open = true;
     }
-
+    else if (config.types.upcoming_releases === 2) { // hide
+        upcoming_releases_details.classList.add("hide");
+    }
 
     if (amount_new_songs <= 0) {
         amount_songs_span.remove();
     }
 
-    return [...upcoming_releases_lis, ...past_releases_lis];
+    return [upcoming_releases_details, ...past_releases_lis];
 }
 
 class Setting {
@@ -1477,14 +1339,8 @@ class Setting {
             set_config(config);
             if (additional_callback) additional_callback(this.config_key_parent[this.config_key]);
         }
-
-        this.setting_label.appendChild(setting_input);
         
-        this.setting_label.reload_config_values = (config_key_parent, config_key) => {
-            setting_input.value = config_key_parent[config_key];
-            return true;
-        }
-
+        this.setting_label.appendChild(setting_input);
         return this.setting_label;
     }
 
@@ -1500,14 +1356,8 @@ class Setting {
             set_config(config);
             if (additional_callback) additional_callback(this.config_key_parent[this.config_key]);
         }
-
+        
         this.setting_label.appendChild(setting_input);
-
-        this.setting_label.reload_config_values = (config_key_parent, config_key) => {
-            setting_input.value = config_key_parent[config_key];
-            return true;
-        }
-
         return this.setting_label;
     }
 
@@ -1521,14 +1371,8 @@ class Setting {
             set_config(config);
             if (additional_callback) additional_callback(this.config_key_parent[this.config_key]);
         };
-
+        
         this.setting_label.appendChild(setting_input);
-
-        this.setting_label.reload_config_values = (config_key_parent, config_key) => {
-            setting_input.checked = config_key_parent[config_key];
-            return true;
-        }
-
         return this.setting_label;
     }
 
@@ -1550,12 +1394,6 @@ class Setting {
         }
 
         this.setting_label.appendChild(setting_input);
-
-        this.setting_label.reload_config_values = (config_key_parent, config_key) => {
-            setting_input.selectedIndex = config_key_parent[config_key];
-            return true;
-        }
-
         return this.setting_label;
     }
 
@@ -1565,9 +1403,6 @@ class Setting {
         setting_input.onclick = () => {on_click(setting_input)};
         
         this.setting_label.appendChild(setting_input);
-
-        this.setting_label.reload_config_values = () => true; // dummy function
-
         return this.setting_label;
     }
 }
@@ -1661,10 +1496,19 @@ function create_main_div(wait_for_new_releases_promise) {
     settings_wrapper.appendChild(
         (new Setting(
             "Upcoming",
-            "How to handle upcoming releases. Only applies after a page reload.",
+            "How to display upcoming releases.",
             config.types, "upcoming_releases",
             "span 2"
-        )).dropdown_setting(["Normal", "Separate", "Hide"])
+        )).dropdown_setting(["Normal", "Separate", "Hide"], (selected_index) => {
+            const upcoming_releases_details = document.querySelector("div.release_radar_main_div > details");
+            const upcoming_releases_details_summary = upcoming_releases_details.querySelector("summary");
+            
+            // 0 = normal, 1 = seperate, 2 = hide
+            upcoming_releases_details.open = selected_index === 0;
+            upcoming_releases_details_summary.classList.toggle("hide", selected_index !== 1);
+
+            return selected_index;
+        })
     );
 
     settings_wrapper.appendChild(
@@ -1722,53 +1566,6 @@ function create_main_div(wait_for_new_releases_promise) {
             "span 1"
         )).checkbox_setting(null, (checked) => {
             main_div.querySelectorAll("a").forEach(a => a.href = a.href.replace(checked ? "https" : "deezer", checked ? "deezer" : "https"));
-        })
-    );
-
-    const cloud_id_input_label = new Setting(
-        "Cloud ID",
-        "The ID of the Cloud Save you are using. This can be used to sync the same config between multiple devices and account. Leave empty for no cloud saves. Also note that your config can be traced back to your account.",
-        config.cloud, "id",
-        "span 2"
-    ).number_setting((cloud_id) => cloud_id.trim() === "" ? null : parseInt(cloud_id).toString())
-    settings_wrapper.appendChild(cloud_id_input_label);
-
-    settings_wrapper.appendChild(
-        (new Setting(
-            "Activate Cloud",
-            "Uses the provided Cloud ID, creates a new Cloud ID used for cloud saving if no ID is provided. This works by creating a custom 'mp3' as a config snapshot. Sharing your config is basically sharing the mp3 and its data.",
-            null, null,
-            "span 2"
-        )).button_setting("\u2601", async () => {
-            const cloud_id_input = cloud_id_input_label.querySelector("input");
-            if (cloud_id_input.value.trim() === "") {
-                const new_cloud_id = await Cloud.create_save();
-                console.log("new cloud id", new_cloud_id);
-                cloud_id_input.value = new_cloud_id;
-            } else {
-                let new_config = await Cloud.retrieve_save(cloud_id_input.value);
-                if (new_config.config_version < config.config_version) {
-                    log("Cloud config is on an old config version, migrating");
-                    new_config = migrate_config(new_config, config.config_version);
-                } else if (new_config.config_version > config.config_version) { // this should never happen if the script is up to date
-                    log("Cloud config is on a newer config version, unable to migrate");
-                    return;
-                }
-                config = new_config;
-                config.cloud.id = cloud_id_input.value;
-                settings_wrapper.childNodes.forEach(settings_label => console.log(settings_label.reload_config_values())) // this is bugged bc the setting still has the old config
-            }
-        })
-    );
-
-    settings_wrapper.appendChild(
-        (new Setting(
-            "Sync",
-            "Enables live syncing of the config. Useful if you use multiple tabs. Note that this only works for the same account. This is different from the Cloud ID and has nothing to do with it.",
-            config.cloud, "live_sync",
-            "span 1"
-        )).checkbox_setting(null, (checked) => {
-
         })
     );
 
@@ -1915,7 +1712,7 @@ function create_main_btn(wrapper_div) {
 
 // globals
 let ui_initialized = false;
-let config = get_config();
+const config = get_config();
 const user_data = {};
 let cache;
 
