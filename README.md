@@ -4,7 +4,7 @@ A script to view new releases of artist you follow, not the ones Deezer thinks y
 ![image](https://github.com/user-attachments/assets/8c2ea203-a649-42ca-950d-f6447af104af)
 
 ## Now also supported for the desktop application
-Thanks to the [DeezMod](https://github.com/bababoi-2/DeezMod) project we can now easily use scripts within the desktop application. You can download the version for that script [here](https://github.com/bababoi-2/DeezMod/blob/main/plugins/release_radar.js)
+Thanks to the [DeezMod](https://github.com/bababoi-2/DeezMod) project we can now easily use scripts within the desktop application. You can download the version for that script [here](https://github.com/bababoi-2/DeezMod/blob/main/plugins/release_radar/)
 
 ## Note
 Due to a bug in the Deezer API, some artists are bugged and dont return releases when having the "Features" checkbox enabled. This will hopefully be fixed on the server side, if not I will implement a fix manually, which would drastically reduce performance though.
