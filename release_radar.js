@@ -836,7 +836,6 @@ function set_css() {
     margin-top: 10px;
     max-height: 250px;
     overflow: auto;
-    scrollbar-width: thin;
     padding-right: 5px;
     width: calc(100% + 5px + 10px);
     font-size: 12px;
