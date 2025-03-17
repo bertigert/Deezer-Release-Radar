@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Deezer Release Radar
 // @namespace    Violentmonkey Scripts
-// @version      1.2.7
+// @version      1.2.8
 // @author       Bababoiiiii
 // @description  Adds a new button on the deezer page allowing you to see new releases of artists you follow.
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=deezer.com
@@ -500,10 +500,10 @@ class StringConfig {
         let current = obj;
         const keys = path.split(".");
         keys.slice(0, -1).forEach(key => {
-                current[key] = current[key] ?? (/^\d+$/.test(key) ? [] : {});
-                current = current[key];
-            });
-            current[keys[keys.length - 1]] = value;
+            current[key] = current[key] ?? (/^\d+$/.test(key) ? [] : {});
+            current = current[key];
+        });
+        current[keys[keys.length - 1]] = value;
     }
     static delete_key(obj, path) {
         let current = obj;
@@ -1481,7 +1481,7 @@ function create_main_div(wait_for_new_releases_promise) {
             all_releases[i].classList.toggle("hide", is_release_filtered(release));
         });
 
-         // if all the upcoming releases are filtered out, hide the details element
+        // if all the upcoming releases are filtered out, hide the details element
         const upcoming_releases_details = main_div.querySelector("details");
         upcoming_releases_details?.classList.toggle("hide", upcoming_releases_details && !upcoming_releases_details.querySelector("li:not(.hide)"));
     }
@@ -1792,8 +1792,6 @@ async function main() {
     user_data.user_token = user_data_tmp.results.USER_TOKEN;
     user_data.license_token = user_data_tmp.results.USER.OPTIONS.license_token;
 
-    log(user_data);
-
     cache = get_cache();
     if (!cache.has_seen) cache.has_seen = {}
 
@@ -1820,7 +1818,7 @@ async function main() {
         set_cache(cache);
     }
 
-    console.log(new_releases);
+    log(new_releases);
 
 
     async function create_ui(parent) {
