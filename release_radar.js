@@ -2,7 +2,7 @@
 // @name         Deezer Release Radar
 // @namespace    Violentmonkey Scripts
 // @version      1.2.8
-// @author       Bababoiiiii
+// @author       bertigert
 // @description  Adds a new button on the deezer page allowing you to see new releases of artists you follow.
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=deezer.com
 // @match        https://www.deezer.com/*
