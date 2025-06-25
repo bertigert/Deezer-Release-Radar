@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Deezer Release Radar
 // @namespace    Violentmonkey Scripts
-// @version      1.2.8
+// @version      1.2.9
 // @author       bertigert
 // @description  Adds a new button on the deezer page allowing you to see new releases of artists you follow.
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=deezer.com
@@ -226,6 +226,7 @@ async function get_releases(auth_token, artist_id, cursor=null) {
 
 async function get_new_releases(auth_token, artist_ids) {
     const new_releases = [];
+    const releases_ids = new Set();
     const current_time = Date.now();
     let current_oldest_song_which_got_added_time  = current_time;
 
@@ -275,6 +276,12 @@ async function get_new_releases(auth_token, artist_ids) {
                         next_page = null;
                         break;
                     }
+
+                    if (releases_ids.has(new_release.id)) {
+                        debug("Release was already seen", new_release.id);
+                        continue;
+                    }
+                    releases_ids.add(new_release.id);
 
                     // configurable filters
                     if (is_release_filtered(new_release)) {
@@ -536,8 +543,8 @@ function migrate_config(config, CURRENT_CONFIG_VERSION) {
             [null, "compact_mode", false],
             [null, "filters", {
                 "contributor_id": ["5080"],
-                "release_name": [String.raw`[([-] *((((super|over) )?slowed( *down)?)|(spee?d( up)?)|(reverb)|(8d audio)|(live))(.*reverb)?( *version)? *[)\]]? *$`],
-                "song_name": [String.raw`[([-] *((((super|over) )?slowed( *down)?)|(spee?d( up)?)|(reverb)|(8d audio)|(live))(.*reverb)?( *version)? *[)\]]? *$`],
+                "release_name": [String.raw`[([-] *((super|over|ultra) )?((slowed( *down)?)|(spee?d( up)?)|(reverb)|(8d audio)|(live))(.*reverb)?( *version)? *[)\]]? *$`],
+                "song_name": [String.raw`[([-] *((super|over|ultra) )?((slowed( *down)?)|(spee?d( up)?)|(reverb)|(8d audio)|(live))(.*reverb)?( *version)? *[)\]]? *$`],
             }],
             [null, "types", {
                 singles: true,
@@ -610,8 +617,8 @@ function get_config() {
         },
         filters: {
             "contributor_id": ["5080"], // 5080 = Various Artists
-            "release_name": [String.raw`[([-] *((((super|over) )?slowed( *down)?)|(spee?d( up)?)|(reverb)|(8d audio)|(live))(.*reverb)?( *version)? *[)\]]? *$`],
-            "song_name": [String.raw`[([-] *((((super|over) )?slowed( *down)?)|(spee?d( up)?)|(reverb)|(8d audio)|(live))(.*reverb)?( *version)? *[)\]]? *$`], // dont add if any of the songs in the release hit a blacklist regex, may be difficult due to async nature
+            "release_name": [String.raw`[([-] *((super|over|ultra) )?((slowed( *down)?)|(spee?d( up)?)|(reverb)|(8d audio)|(live))(.*reverb)?( *version)? *[)\]]? *$`],
+            "song_name": [String.raw`[([-] *((super|over|ultra) )?((slowed( *down)?)|(spee?d( up)?)|(reverb)|(8d audio)|(live))(.*reverb)?( *version)? *[)\]]? *$`], // dont add if any of the songs in the release hit a blacklist regex, may be difficult due to async nature
         },
         types: {
             singles: true,
